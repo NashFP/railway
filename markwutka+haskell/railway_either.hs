@@ -52,5 +52,7 @@ main = do
 -- In this case, since the left is already a string, we just use the identity
 -- function for the left, and for the right we use show, which converts the
 -- integer to a string.
--- The $ operator is just a way to do function application. 
-    putStrLn $ either id show result
+-- The $ operator is just a way to do function application. It's the same
+-- as putStrLn (either id show result)
+--
+   putStrLn $ either id show result
