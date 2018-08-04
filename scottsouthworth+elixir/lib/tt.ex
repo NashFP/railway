@@ -86,30 +86,49 @@ defmodule TT.TrackOptions do
   def both do :both end
 end
 
+defmodule TT.InputOptions do
+  def apply do :apply end
+  def railway do :railway end
+  def outside do :outside end
+end
+
 defmodule TT.Options do
-  defstruct name: nil, apply: false, try: false, bang: false, track: :ok, control: :derail, return: :function
+  defstruct name: nil, input: :railway, try: false, bang: false, track: :ok, control: :derail, return: :function
 
   @type return_options :: :noop | :history | :function | :cache | :lookup
   @type control_options :: :hold | :steer | :derail
   @type track_options :: :ok | :error | :both
+  @type input_options :: :railway | :apply | :outside
+
   @type t :: %TT.Options{
                name: atom | nil,
-               apply: boolean,
                try: boolean,
                bang: boolean,
+               input: input_options(),
                return: return_options(),
                track: track_options(),
                control: control_options()
              }
 
-  # options: :apply  - args as applied array if true
+  # options:
   #          :try    - rescue to :error tuple
   #          :bang   - need to wrap function return in :ok tuple
   #          :track   - function runs on :ok, :error or :both tracks
+  #          :return  - how is the value stored and returned
+  #                :noop  - nothing stored, track value unchanged
+  #                :history - history of track returned
+  #                :cache - value stored in history and returned
+  #                :lookup - value(s) pulled from history and returned
+  #                :function - default, runs function and returns value
   #          :control    - controls the track we are on
   #               :hold    - tag does not change based on result
   #               :steer   - tag becomes the latest result (even to recover)
   #               :derail  - tag can become error (default)
+  #          :input      - what gets passed in to function?
+  #               :railway - current value on the track
+  #               :apply   - current value used as kernel.apply (must be array)
+  #               :outside - function called as arity 0 (ignores current track value)
+  #
 
 
   # check = track: both, control: derail
@@ -193,17 +212,17 @@ defmodule TT do
 
   defp resolve_function(%Result{} = result, function, %Options{name: name, try: true} = options) do
     try do
-        resolve_function_with_apply(result, function, options)
+        resolve_function_with_input(result, function, options)
       rescue
         e -> %Result{tag: :error, name: name, value: e}
     end
   end
 
   defp resolve_function(%Result{} = result, function, %Options{try: false} = options)  do
-    resolve_function_with_apply(result, function, options)
+    resolve_function_with_input(result, function, options)
   end
 
-  defp resolve_function_with_apply(%Result{value: value} = result, function, %Options{name: name, apply: true} = options) do
+  defp resolve_function_with_input(%Result{value: value} = result, function, %Options{name: name, input: :apply} = options) do
     case is_list(value) do
       true -> function_return = apply(function, value)
               resolve_function_return(result, function_return, options)
@@ -211,10 +230,17 @@ defmodule TT do
     end
   end
 
-  defp resolve_function_with_apply(%Result{value: value} = result, function, %Options{apply: false} = options) do
+  defp resolve_function_with_input(%Result{value: value} = result, function, %Options{input: :railway} = options) do
 
       function_return = function.(value)
       resolve_function_return(result, function_return, options)
+
+  end
+
+  defp resolve_function_with_input(%Result{} = result, function, %Options{input: :outside} = options) do
+
+    function_return = function.()
+    resolve_function_return(result, function_return, options)
 
   end
 
