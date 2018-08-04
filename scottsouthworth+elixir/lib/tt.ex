@@ -151,6 +151,13 @@ defmodule TT do
 
   @type tag_result :: {:ok | :error, any()}
 
+  defp extract_values(track, arg_names) do
+    tagged_values = Enum.map(arg_names,
+      fn name ->
+        Enum.find(track.history, {:error, :ticket_not_found}, fn r -> r.name == name end)
+      end)
+  end
+
   defp resolve_track(track_or_value, function, options_or_keywords) do
 
     track = to_track(track_or_value)
@@ -290,17 +297,6 @@ defmodule TT do
     %Track{result: %Result{tag: :ok, value: value}}
   end
 
-#  def run(track, function, options \\ []) do
-#    resolve_track(track, function, options)
-#  end
-#
-#  def run!(track, function, options \\ []) do
-#    Logger.warn("options: #{inspect(options)}")
-#    struct_options = to_options(options)
-#    new_options = Map.put(struct_options, :bang, true)
-#    resolve_track(track, function, new_options)
-#  end
-
   def run(track, function, name \\ nil) do
     resolve_track(track, function, [name: name])
   end
@@ -308,6 +304,51 @@ defmodule TT do
   def run!(track, function, name \\ nil) do
     resolve_track(track, function, [name: name, bang: true])
   end
+
+  def try(track, function, name \\ nil) do
+    resolve_track(track, function, [name: name, try: true])
+  end
+
+  def try!(track, function, name \\ nil) do
+    resolve_track(track, function, [name: name, bang: true, try: true])
+  end
+
+  def run_outside(track, function, name \\ nil) do
+    resolve_track(track, function, [name: name, input: :outside])
+  end
+
+  def run_outside!(track, function, name \\ nil) do
+    resolve_track(track, function, [name: name, bang: true, input: :outside])
+  end
+
+  def try_outside(track, function, name \\ nil) do
+    resolve_track(track, function, [name: name, try: true, input: :outside])
+  end
+
+  def try_outside!(track, function, name \\ nil) do
+    resolve_track(track, function, [name: name, bang: true, try: true, input: :outside])
+  end
+
+  def run_with(track, args, name \\ nil) do
+    cache_values = extract_values(track, args)
+    resolve_track(track, cache_values, [name: name, input: :apply])
+  end
+
+  def run_with!(track, args, name \\ nil) do
+    cache_values = extract_values(track, args) |> TT.Result.unload()
+    resolve_track(track, cache_values, [name: name, bang: true, input: :apply])
+  end
+
+  def try_with(track, args, name \\ nil) do
+    cache_values = extract_values(track, args)
+    resolve_track(track, cache_values, [name: name, try: true, input: :apply])
+  end
+
+  def try_with!(track, args, name \\ nil) do
+    cache_values = extract_values(track, args) |> TT.Result.unload()
+    resolve_track(track, cache_values, [name: name, bang: true, try: true, input: :apply])
+  end
+
 
   def cache(track, name, value) do
     resolve_track(track, value, [name: name, return: :cache])
