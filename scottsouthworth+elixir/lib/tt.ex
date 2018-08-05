@@ -10,6 +10,16 @@ defmodule TT.Result do
                 skip: boolean
              }
 
+  def result_to_ok_value(%Result{} = result) do
+    {:ok, value} = {result.tag, result.value}
+    value
+  end
+
+  def result_to_error_value(%Result{} = result) do
+    {:error, value} = {result.tag, result.value}
+    value
+  end
+  
   def tag_error(value) do
     {:error, value}
   end
@@ -22,7 +32,7 @@ defmodule TT.Result do
     {:ok, unload(value)}
   end
 
-  def unload_inside(%Result{tag: :ok, value: value}) do
+  def unload_inside(%Result{tag: :ok, value: value, skip: false}) do
     {:ok, unload(value)}
   end
 
@@ -30,7 +40,7 @@ defmodule TT.Result do
 
     case value do
 
-      %Result{tag: :ok, value: v} -> v
+      %Result{tag: :ok, value: v, skip: false} -> v
 
       _ when is_list(value) ->
 
@@ -89,16 +99,16 @@ end
 defmodule TT.InputOptions do
   def apply do :apply end
   def railway do :railway end
-  def outside do :outside end
+  def off_track do :off_track end
 end
 
 defmodule TT.Options do
   defstruct name: nil, input: :railway, try: false, bang: false, track: :ok, control: :derail, return: :function
 
-  @type return_options :: :noop | :history | :function | :cache | :lookup
+  @type return_options :: :noop | :history | :function | :cache
   @type control_options :: :hold | :steer | :derail
   @type track_options :: :ok | :error | :both
-  @type input_options :: :railway | :apply | :outside
+  @type input_options :: :railway | :apply | :off_track
 
   @type t :: %TT.Options{
                name: atom | nil,
@@ -127,9 +137,8 @@ defmodule TT.Options do
   #          :input      - what gets passed in to function?
   #               :railway - current value on the track
   #               :apply   - current value used as kernel.apply (must be array)
-  #               :outside - function called as arity 0 (ignores current track value)
+  #               :off_track - function called as arity 0 (ignores current track value)
   #
-
 
   # check = track: both, control: derail
 end
@@ -151,10 +160,15 @@ defmodule TT do
 
   @type tag_result :: {:ok | :error, any()}
 
-  defp extract_values(track, arg_names) do
+  defp extract_ok_values(track, arg_names) do
+    extract_results(track, arg_names)
+    |> Enum.map(&TT.Result.result_to_ok_value/1)
+  end
+
+  defp extract_results(track, arg_names) do
     tagged_values = Enum.map(arg_names,
       fn name ->
-        Enum.find(track.history, {:error, :ticket_not_found}, fn r -> r.name == name end)
+        Enum.find(track.history, {:error, :ticket_not_found}, fn r -> r.name == name and r.skip == false end)
       end)
   end
 
@@ -177,8 +191,8 @@ defmodule TT do
       :history -> resolve_history(track.result, track.history, options)
       :function -> resolve_function(track.result, function, options)
       :noop -> resolve_function(track.result, function, options)
-               %Result{track.result | name: options.name}
-      :cache -> resolve_function_return(track.result, function, options)
+               %Result{track.result | skip: true}
+      :cache -> resolve_direct_value(track.result, function, options)
     end
 
     new_history = [new_result | track.history]
@@ -194,8 +208,6 @@ defmodule TT do
 
   end
 
-  # todo update name and skip props on result no matter what
-  # todo if on track, then one function for resolve_on_track, one for resolve_off_track
   # todo do not unload or pull 'skip' values
   # todo make sure name option is ALWAYS applied to results
 
@@ -216,7 +228,6 @@ defmodule TT do
     end
   end
 
-
   defp resolve_function(%Result{} = result, function, %Options{name: name, try: true} = options) do
     try do
         resolve_function_with_input(result, function, options)
@@ -233,7 +244,9 @@ defmodule TT do
     case is_list(value) do
       true -> function_return = apply(function, value)
               resolve_function_return(result, function_return, options)
-      false -> %Result{tag: :error, name: name, value: :cannot_apply_non_list_value}
+      false ->
+        Logger.warn("got #{inspect(value)}")
+        %Result{tag: :error, name: name, value: :cannot_apply_non_list_value}
     end
   end
 
@@ -244,11 +257,15 @@ defmodule TT do
 
   end
 
-  defp resolve_function_with_input(%Result{} = result, function, %Options{input: :outside} = options) do
+  defp resolve_function_with_input(%Result{} = result, function, %Options{input: :off_track} = options) do
 
     function_return = function.()
     resolve_function_return(result, function_return, options)
 
+  end
+
+  defp resolve_direct_value(%Result{tag: tag}, direct_value, %Options{name: name} = options) do
+     %Result{tag: tag, name: name, value: direct_value}
   end
 
   defp resolve_function_return(%Result{tag: tag}, function_return, %Options{name: name} = options) do
@@ -305,6 +322,26 @@ defmodule TT do
     resolve_track(track, function, [name: name, bang: true])
   end
 
+  def check(track, function, name \\ nil) do
+    resolve_track(track, function, [name: name, track: :both])
+  end
+
+  def check!(track, function, name \\ nil) do
+    resolve_track(track, function, [name: name, track: :both, bang: true])
+  end
+
+  def signal(track, function) do
+    resolve_track(track, function, [return: :noop, bang: true])
+  end
+
+  def peek(track, function) do
+    resolve_track(track, function, [return: :noop, bang: true, track: :both])
+  end
+
+  def growl(track, function) do
+    resolve_track(track, function, [return: :noop, bang: true, track: :error])
+  end
+
   def try(track, function, name \\ nil) do
     resolve_track(track, function, [name: name, try: true])
   end
@@ -313,161 +350,41 @@ defmodule TT do
     resolve_track(track, function, [name: name, bang: true, try: true])
   end
 
-  def run_outside(track, function, name \\ nil) do
-    resolve_track(track, function, [name: name, input: :outside])
+  def run_with(track, function, args, name \\ nil) do
+    cache_with(track, args, name)
+    |> resolve_track(function, [name: name, input: :apply])
   end
 
-  def run_outside!(track, function, name \\ nil) do
-    resolve_track(track, function, [name: name, bang: true, input: :outside])
+  def run_with!(track, function, args, name \\ nil) do
+    cache_with(track, args, name)
+    |> resolve_track(function, [name: name, input: :apply, bang: true])
   end
 
-  def try_outside(track, function, name \\ nil) do
-    resolve_track(track, function, [name: name, try: true, input: :outside])
+  def try_with(track, function, args, name \\ nil) do
+    cache_with(track, args, name)
+    |> resolve_track(function, [name: name, try: true, input: :apply])
   end
 
-  def try_outside!(track, function, name \\ nil) do
-    resolve_track(track, function, [name: name, bang: true, try: true, input: :outside])
+  def try_with!(track, function, args, name \\ nil) do
+    cache_with(track, args, name)
+    |> resolve_track(function, [name: name, bang: true, try: true, input: :apply])
   end
-
-  def run_with(track, args, name \\ nil) do
-    cache_values = extract_values(track, args)
-    resolve_track(track, cache_values, [name: name, input: :apply])
-  end
-
-  def run_with!(track, args, name \\ nil) do
-    cache_values = extract_values(track, args) |> TT.Result.unload()
-    resolve_track(track, cache_values, [name: name, bang: true, input: :apply])
-  end
-
-  def try_with(track, args, name \\ nil) do
-    cache_values = extract_values(track, args)
-    resolve_track(track, cache_values, [name: name, try: true, input: :apply])
-  end
-
-  def try_with!(track, args, name \\ nil) do
-    cache_values = extract_values(track, args) |> TT.Result.unload()
-    resolve_track(track, cache_values, [name: name, bang: true, try: true, input: :apply])
-  end
-
 
   def cache(track, name, value) do
     resolve_track(track, value, [name: name, return: :cache])
   end
 
-  def cache!(track, name, value) do
-    resolve_track(track, value, [name: name, return: :cache, bang: true])
+  def cache_many(track, [{k, v} | values]) do
+    resolve_track(track, v, [name: k, return: :cache])
+    |> cache_many(values)
+  end
+
+  def cache_many(track, []) do
+    track
   end
 
   def eol(%Track{} = track) do
     {track.result.tag, track.result.value}
   end
 
-
-#  def tickets({tag, _value, history}, arg_names, name \\ nil) when is_list(arg_names) do
-#    tickets = Enum.map(arg_names, fn name -> {name, Keyword.get(history, name, {:error, :ticket_not_found})} end)
-#    {tag, tickets, [{name, {:ok, tickets}} | history]}
-#  end
-#
-#  def ticket({tag, _value, history}, arg_name, name \\ nil) do
-#    {_name, ticket} = {name, Keyword.get(history, arg_name, {:error, :ticket_not_found})}
-#    {tag, ticket, [{name, {:ok, ticket}} | history]}
-#  end
-#
-#  def values({tag, value, history}, arg_names, name \\ nil) do
-#    tickets({tag, value, history}, arg_names, nil)
-#    |> unload(name)
-#  end
-#
-#  def value({tag, value, history}, arg_name, name \\ nil) do
-#    ticket({tag, value, history}, arg_name, nil)
-#    |> unload(name)
-#  end
-#
-#  def warn({tag, value, _history} = current_track) do
-#    Logger.warn("TT| #{inspect(tag)} = #{inspect(value)}")
-#    current_track
-#  end
-#
-#  def use(current_track, arg_names, function, name \\ nil)
-#
-#  def use({tag, _value, history} = current_track, arg_names, function, name) when is_list(arg_names) do
-#    new_values = values(current_track, arg_names)
-#    run({tag, new_values, history}, function, name)
-#  end
-#
-#  def use({tag, _value, history} = current_track, arg_name, function, name)  do
-#    new_value = value(current_track, arg_name)
-#    run({tag, new_value, history}, function, name)
-#  end
-#
-#  def use!(current_track, arg_names, function, name \\ nil)
-#
-#  def use!({tag, _value, history} = current_track, arg_names, function, name) when is_list(arg_names) do
-#    new_values = values(current_track, arg_names)
-#    run!({tag, new_values, history}, function, name)
-#  end
-#
-#  def use!({tag, _value, history} = current_track, arg_name, function, name) do
-#    new_value = value(current_track, arg_name)
-#    run!({tag, new_value, history}, function, name)
-#  end
-#
-#  @spec check(tagged_result() | track_result(), function()) :: track_result()
-#
-#  def check({tag, value}, function) when is_function(function) do
-#    check({tag, value, []}, function)
-#  end
-#
-#  def check({tag, value, history}, function) when is_list(history) and is_function(function) do
-#    result = function.(value)
-#
-#    case {tag, result} do
-#      {:ok, {:ok, _new_value}} -> {:ok, value, [result | history]}
-#      {:error, {new_tag, new_value}} -> {:error, value, [{new_tag, new_value} | history]}
-#      _ -> {:error, value, [{:error, result} | history]}
-#    end
-#  end
-#
-#  # tag: :hold, run: :ok
-#  @spec spur(any(), function()) :: track_result()
-#  def spur(value_or_result_or_track, function)
-#
-#  def spur({tag, value}, function) when is_function(function) do
-#    spur({tag, value, []}, function)
-#  end
-#
-#  def spur({tag, value, history} = current_track, function)
-#      when is_list(history) and is_function(function) do
-#    case tag do
-#      :ok -> function.(value)
-#      _ -> :noop
-#    end
-#
-#    current_track
-#  end
-#
-
-
-
-#  @spec eol(track_result()) :: tagged_result()
-#  @spec eol(track_result(), function()) :: tagged_result()
-#
-#  def eol({tag, value, history}) when is_list(history) do
-#    {tag, value}
-#  end
-#
-#  def eol({tag, _value, history} = current_track, function)
-#      when is_atom(tag) and is_list(history) and is_function(function) do
-#    {new_tag, new_value, _new_history} = manage(current_track, function)
-#    {new_tag, new_value}
-#  end
-
-  defmacro left >>> right do
-    quote do
-      (fn ->
-         args = [unquote(left), unquote(right)]
-         apply(&TT.run/3, args)
-       end).()
-    end
-  end
 end

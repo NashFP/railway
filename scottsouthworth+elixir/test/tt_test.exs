@@ -5,7 +5,6 @@ defmodule TTTest do
   import TT, only: [>>>: 2]
 
   def add_two_numbers(x, y) do
-   Logger.warn("adding two: #{inspect(x)} and #{inspect(y)}")
    x + y
   end
 
@@ -29,7 +28,13 @@ defmodule TTTest do
   test "successful run! with normal function" do
     result =
       {:ok, 5}
+#      |> TT.cache(:cow, 6)
+#      |> TT.cache(:dog, 0)
+      |> TT.cache_many([dog: 2, cow: 6])
+#      |> TT.try(fn _ -> crashy_uppercase("moo!") end)
       |> TT.run!(fn x -> add_two_numbers(x, 9) end)
+      |> TT.signal(fn x -> Logger.warn("signal be #{inspect(x)}") end)
+      |> TT.run_with(&rop_divide/2, [:cow, :dog])
 #      |> TT.cache!(:moo, 11)
       |> TT.eol()
 #      >>> add_two_numbers(2,9), name: :moo, return: :value
