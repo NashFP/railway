@@ -79,30 +79,6 @@ defmodule TT.Result do
 
 end
 
-#defmodule TT.ReturnOptions do
-#  def noop do :noop end
-#  def history do :history end
-#  def function do :function end
-#  def cache do :cache end
-#end
-#
-#defmodule TT.ControlOptions do
-#  def hold do :hold end
-#  def veer do :veer end
-#  def derail do :derail end
-#end
-#
-#defmodule TT.TrackOptions do
-#  def ok do :ok end
-#  def error do :error end
-#  def both do :both end
-#end
-#
-#defmodule TT.InputOptions do
-#  def apply do :apply end
-#  def railway do :railway end
-#  def off_track do :off_track end
-#end
 
 defmodule TT.Options do
 
@@ -113,7 +89,7 @@ defmodule TT.Options do
   @type return_options :: :noop | :history | :function | :cache
   @type control_options :: :hold | :veer | :derail
   @type track_options :: :ok | :error | :both
-  @type input_options :: :railway | :apply | :off_track
+  @type input_options :: :railway | :tickets | :off_track
 
   @type t :: %TT.Options{
                name: atom | nil,
@@ -141,7 +117,7 @@ defmodule TT.Options do
   #               :derail  - tag can become error (default)
   #          :input      - what gets passed in to function?
   #               :railway - current value on the track
-  #               :apply   - current value used as kernel.apply (must be array)
+  #               :tickets   - current value used as kernel.apply (must be array)
   #               :off_track - function called as arity 0 (ignores current track value)
   #
 
@@ -169,11 +145,15 @@ defmodule TT do
   @type tickets :: [atom()]
 
   @doc """
-  Calls the function `fn/1 :: {:ok | :error, any()}` with the current `:ok` track value.
+  Operates on the `:ok` track.
+  Calls the function `fn/1 :: {:ok | :error, any()}` with the current track value.
+  If an `:error` tuple is returned, the track will shift to the `:error` state.
 
   ## Examples
       iex> {:ok, 10} |> TT.run(fn x -> {:ok, x * 2} end) |> TT.eol()
       {:ok, 20}
+      iex> {:ok, 10} |> TT.run(fn x -> {:error, x * 5} end) |> TT.eol()
+      {:error, 50}
       iex> {:error, 7} |> TT.run(fn x -> {:ok, x * 3} end) |> TT.eol()
       {:error, 7}
   """
@@ -184,11 +164,15 @@ defmodule TT do
   end
 
   @doc """
-  Calls the function `fn/1 :: any()` with the current `:ok` track value.
+  Operates on the `:ok` track.
+  Calls the function `fn/1 :: any()` with the current track value.
+  If an `:error` tuple is returned, the track will shift to the `:error` state.
 
   ## Examples
       iex> {:ok, 4} |> TT.run!(fn x -> x * 3 end) |> TT.eol()
       {:ok, 12}
+      iex> {:ok, 17} |> TT.run(fn x -> {:error, x + 5} end) |> TT.eol()
+      {:error, 22}
       iex> {:error, 1} |> TT.run!(fn x -> x * 5 end) |> TT.eol()
       {:error, 1}
   """
@@ -312,25 +296,25 @@ defmodule TT do
   @spec run_tickets(any(), function(), tickets(), name()) :: Track.t()
   def run_tickets(track, function, tickets, name \\ nil) do
     cache_tickets(track, tickets)
-    |> resolve_track(function, [name: name, input: :apply])
+    |> resolve_track(function, [name: name, input: :tickets])
   end
 
   @spec run_tickets!(any(), function(), tickets(), name()) :: Track.t()
   def run_tickets!(track, function, tickets, name \\ nil) do
     cache_tickets(track, tickets)
-    |> resolve_track(function, [name: name, input: :apply, bang: true])
+    |> resolve_track(function, [name: name, input: :tickets, bang: true])
   end
 
   @spec try_tickets(any(), function(), tickets(), name()) :: Track.t()
   def try_tickets(track, function, tickets, name \\ nil) do
     cache_tickets(track, tickets)
-    |> resolve_track(function, [name: name, try: true, input: :apply])
+    |> resolve_track(function, [name: name, try: true, input: :tickets])
   end
 
   @spec try_tickets!(any(), function(), tickets(), name()) :: Track.t()
   def try_tickets!(track, function, tickets, name \\ nil) do
     cache_tickets(track, tickets)
-    |> resolve_track(function, [name: name, bang: true, try: true, input: :apply])
+    |> resolve_track(function, [name: name, bang: true, try: true, input: :tickets])
   end
 
   @spec cache(any(), atom(), any()) :: Track.t()
@@ -432,7 +416,7 @@ defmodule TT do
     resolve_function_with_input(result, function, options)
   end
 
-  defp resolve_function_with_input(%Result{value: value} = result, function, %Options{name: name, input: :apply} = options) do
+  defp resolve_function_with_input(%Result{value: value} = result, function, %Options{name: name, input: :tickets} = options) do
     case is_list(value) do
       true -> function_return = apply(function, value)
               resolve_function_return(result, function_return, options)
