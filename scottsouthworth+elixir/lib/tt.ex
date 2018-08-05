@@ -213,16 +213,16 @@ defmodule TT do
   The return value is ignored and the track will remain unchanged.
 
   ## Examples
-      iex> {:ok, "low"} |> TT.signal(fn x -> IO.puts("danger " <> x) end) |> TT.eol()
+      iex> {:ok, "low"} |> TT.hoot_success(fn x -> IO.puts("danger " <> x) end) |> TT.eol()
       {:ok, "low"}
-      iex> {:error, "high"} |> TT.signal(fn x -> IO.puts("danger " <> x) end) |> TT.eol()
+      iex> {:error, "high"} |> TT.hoot_success(fn x -> IO.puts("danger " <> x) end) |> TT.eol()
       {:error, "high"}
 
   Note that "danger low" would appear in the actual output for the 1st example.
   """
 
-  @spec signal(any(), function()) :: Track.t()
-  def signal(track, function) do
+  @spec hoot_success(any(), function()) :: Track.t()
+  def hoot_success(track, function) do
     resolve_track(track, function, [return: :noop, bang: true])
   end
 
@@ -232,8 +232,8 @@ defmodule TT do
   The return value is ignored and the track will remain unchanged.
   """
 
-  @spec signal_history(any(), function()) :: Track.t()
-  def signal_history(track, function) do
+  @spec hoot_history(any(), function()) :: Track.t()
+  def hoot_history(track, function) do
     resolve_track(track, function, [return: :noop, bang: true, return: :history])
   end
 
@@ -259,16 +259,16 @@ defmodule TT do
   The return value is ignored and the track will remain unchanged.
 
   ## Examples
-      iex> {:ok, "low"} |> TT.report_error(fn x -> IO.puts("danger " <> x) end) |> TT.eol()
+      iex> {:ok, "low"} |> TT.growl_error(fn x -> IO.puts("danger " <> x) end) |> TT.eol()
       {:ok, "low"}
-      iex> {:error, "high"} |> TT.report_error(fn x -> IO.puts("danger " <> x) end) |> TT.eol()
+      iex> {:error, "high"} |> TT.growl_error(fn x -> IO.puts("danger " <> x) end) |> TT.eol()
       {:error, "high"}
 
   Note that "danger high" would appear in the actual output for the 2nd example.
   """
 
-  @spec report_error(any(), function()) :: Track.t()
-  def report_error(track, function) do
+  @spec growl_error(any(), function()) :: Track.t()
+  def growl_error(track, function) do
     resolve_track(track, function, [return: :noop, bang: true, track: :error])
   end
 
@@ -278,18 +278,18 @@ defmodule TT do
   The return value is ignored and the track will remain unchanged.
   """
 
-  @spec report_history(any(), function()) :: Track.t()
-  def report_history(track, function) do
+  @spec growl_history(Track.t(), function()) :: Track.t()
+  def growl_history(track, function) do
     resolve_track(track, function, [return: :noop, bang: true, track: :error, return: :history])
   end
 
-  @spec try(any(), function(), name()) :: Track.t()
-  def try(track, function, name \\ nil) do
+  @spec try_catch(any(), function(), name()) :: Track.t()
+  def try_catch(track, function, name \\ nil) do
     resolve_track(track, function, [name: name, try: true])
   end
 
-  @spec try!(any(), function(), name()) :: Track.t()
-  def try!(track, function, name \\ nil) do
+  @spec try_catch!(any(), function(), name()) :: Track.t()
+  def try_catch!(track, function, name \\ nil) do
     resolve_track(track, function, [name: name, bang: true, try: true])
   end
 
@@ -305,14 +305,14 @@ defmodule TT do
     |> resolve_track(function, [name: name, input: :tickets, bang: true])
   end
 
-  @spec try_tickets(any(), function(), tickets(), name()) :: Track.t()
-  def try_tickets(track, function, tickets, name \\ nil) do
+  @spec try_catch_tickets(any(), function(), tickets(), name()) :: Track.t()
+  def try_catch_tickets(track, function, tickets, name \\ nil) do
     cache_tickets(track, tickets)
     |> resolve_track(function, [name: name, try: true, input: :tickets])
   end
 
-  @spec try_tickets!(any(), function(), tickets(), name()) :: Track.t()
-  def try_tickets!(track, function, tickets, name \\ nil) do
+  @spec try_catch_tickets!(any(), function(), tickets(), name()) :: Track.t()
+  def try_catch_tickets!(track, function, tickets, name \\ nil) do
     cache_tickets(track, tickets)
     |> resolve_track(function, [name: name, bang: true, try: true, input: :tickets])
   end
@@ -406,17 +406,17 @@ defmodule TT do
 
   defp resolve_function(%Result{} = result, function, %Options{name: name, try: true} = options) do
     try do
-      resolve_function_with_input(result, function, options)
+      resolve_function_input(result, function, options)
     rescue
       e -> %Result{tag: :error, name: name, value: e}
     end
   end
 
   defp resolve_function(%Result{} = result, function, %Options{try: false} = options)  do
-    resolve_function_with_input(result, function, options)
+    resolve_function_input(result, function, options)
   end
 
-  defp resolve_function_with_input(%Result{value: value} = result, function, %Options{name: name, input: :tickets} = options) do
+  defp resolve_function_input(%Result{value: value} = result, function, %Options{name: name, input: :tickets} = options) do
     case is_list(value) do
       true -> function_return = apply(function, value)
               resolve_function_return(result, function_return, options)
@@ -426,14 +426,14 @@ defmodule TT do
     end
   end
 
-  defp resolve_function_with_input(%Result{value: value} = result, function, %Options{input: :railway} = options) do
+  defp resolve_function_input(%Result{value: value} = result, function, %Options{input: :railway} = options) do
 
     function_return = function.(value)
     resolve_function_return(result, function_return, options)
 
   end
 
-  defp resolve_function_with_input(%Result{} = result, function, %Options{input: :off_track} = options) do
+  defp resolve_function_input(%Result{} = result, function, %Options{input: :off_track} = options) do
 
     function_return = function.()
     resolve_function_return(result, function_return, options)

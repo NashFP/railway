@@ -1,6 +1,7 @@
 defmodule TTTest do
   use ExUnit.Case
   doctest TT
+
   require Logger
 #  import TT, only: [>>>: 2]
 
@@ -26,19 +27,22 @@ defmodule TTTest do
   end
 
   test "successful run! with normal function" do
+    import TT
+
     result =
       {:ok, 5}
 #      |> TT.cache(:cow, 6)
 #      |> TT.cache(:dog, 0)
-      |> TT.cache_many([dog: 2, cow: 6])
+      |> cache_many([dog: 0, cow: 6])
 #      |> TT.try(fn _ -> crashy_uppercase("moo!") end)
-      |> TT.run!(fn x -> add_two_numbers(x, 9) end)
-      |> TT.signal(fn x -> Logger.warn("signal be #{inspect(x)}") end)
-      |> TT.run_tickets(&rop_divide/2, [:cow, :dog])
+      |> run!(fn x -> add_two_numbers(x, 9) end)
+      |> hoot_success(fn x -> Logger.warn("signal be #{inspect(x)}") end)
+      |> run_tickets(&rop_divide/2, [:cow, :dog])
+      |> report_history(fn h -> IO.puts(inspect(h)) end)
 #      |> TT.cache!(:moo, 11)
-      |> TT.eol()
+      |> eol()
 #      >>> add_two_numbers(2,9), name: :moo, return: :value
-    assert {:ok, 14} == result
+    assert {:ok, 3.0} == result
   end
 
 #  test "successful run with tagging function" do
