@@ -188,7 +188,9 @@ defmodule TT do
   defp resolve_on_track(%Track{} = track, function, %Options{} = options) do
 
     new_result = case options.return do
-      :history -> resolve_history(track.result, track.history, options)
+      :history ->
+        history_result = %Result{ track.result | value: track.history}
+        resolve_function(history_result, function, options)
       :function -> resolve_function(track.result, function, options)
       :noop -> resolve_function(track.result, function, options)
                %Result{track.result | skip: true}
@@ -206,17 +208,6 @@ defmodule TT do
     new_history = [skip_result | track.history]
     %Track{result: track.result, history: new_history}
 
-  end
-
-  # todo do not unload or pull 'skip' values
-  # todo make sure name option is ALWAYS applied to results
-
-  defp resolve_history(%Result{tag: tag}, history, %Options{name: name, track: track}) do
-      case {tag, track} do
-        {:error, :error} -> %Result{tag: :error, name: name, value: history}
-        {:ok, :ok} -> %Result{tag: :ok, name: name, value: history}
-        {_, :both} -> %Result{tag: tag, name: name, value: history}
-      end
   end
 
   defp is_on_track?(%Result{tag: tag}, %Options{track: track}) do
@@ -334,12 +325,24 @@ defmodule TT do
     resolve_track(track, function, [return: :noop, bang: true])
   end
 
+  def signal_history(track, function) do
+    resolve_track(track, function, [return: :noop, bang: true, return: :history])
+  end
+
   def peek(track, function) do
     resolve_track(track, function, [return: :noop, bang: true, track: :both])
   end
 
+  def peek_history(track, function) do
+    resolve_track(track, function, [return: :noop, bang: true, track: :both, return: :history])
+  end
+
   def growl(track, function) do
     resolve_track(track, function, [return: :noop, bang: true, track: :error])
+  end
+
+  def growl_history(track, function) do
+    resolve_track(track, function, [return: :noop, bang: true, track: :error, return: :history])
   end
 
   def try(track, function, name \\ nil) do
@@ -351,22 +354,22 @@ defmodule TT do
   end
 
   def run_with(track, function, args, name \\ nil) do
-    cache_with(track, args, name)
+    cache_with(track, args)
     |> resolve_track(function, [name: name, input: :apply])
   end
 
   def run_with!(track, function, args, name \\ nil) do
-    cache_with(track, args, name)
+    cache_with(track, args)
     |> resolve_track(function, [name: name, input: :apply, bang: true])
   end
 
   def try_with(track, function, args, name \\ nil) do
-    cache_with(track, args, name)
+    cache_with(track, args)
     |> resolve_track(function, [name: name, try: true, input: :apply])
   end
 
   def try_with!(track, function, args, name \\ nil) do
-    cache_with(track, args, name)
+    cache_with(track, args)
     |> resolve_track(function, [name: name, bang: true, try: true, input: :apply])
   end
 
@@ -381,6 +384,10 @@ defmodule TT do
 
   def cache_many(track, []) do
     track
+  end
+
+  defp cache_with(track, args) do
+    cache(track, nil, extract_ok_values(track, args))
   end
 
   def eol(%Track{} = track) do

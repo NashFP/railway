@@ -2,7 +2,7 @@ defmodule TTTest do
   use ExUnit.Case
   doctest TT
   require Logger
-  import TT, only: [>>>: 2]
+#  import TT, only: [>>>: 2]
 
   def add_two_numbers(x, y) do
    x + y
