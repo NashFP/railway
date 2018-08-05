@@ -34,7 +34,7 @@ defmodule TTTest do
 #      |> TT.try(fn _ -> crashy_uppercase("moo!") end)
       |> TT.run!(fn x -> add_two_numbers(x, 9) end)
       |> TT.signal(fn x -> Logger.warn("signal be #{inspect(x)}") end)
-      |> TT.run_with(&rop_divide/2, [:cow, :dog])
+      |> TT.run_tickets(&rop_divide/2, [:cow, :dog])
 #      |> TT.cache!(:moo, 11)
       |> TT.eol()
 #      >>> add_two_numbers(2,9), name: :moo, return: :value

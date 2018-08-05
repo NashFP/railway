@@ -1,5 +1,8 @@
 
 defmodule TT.Result do
+
+  @moduledoc false
+
   alias TT.Result
   defstruct tag: :ok, name: nil, value: nil, skip: false
   @type tag :: :ok | :error
@@ -76,37 +79,39 @@ defmodule TT.Result do
 
 end
 
-defmodule TT.ReturnOptions do
-  def noop do :noop end
-  def history do :history end
-  def function do :function end
-  def cache do :cache end
-  def lookup do :lookup end
-end
-
-defmodule TT.ControlOptions do
-  def hold do :hold end
-  def steer do :steer end
-  def derail do :derail end
-end
-
-defmodule TT.TrackOptions do
-  def ok do :ok end
-  def error do :error end
-  def both do :both end
-end
-
-defmodule TT.InputOptions do
-  def apply do :apply end
-  def railway do :railway end
-  def off_track do :off_track end
-end
+#defmodule TT.ReturnOptions do
+#  def noop do :noop end
+#  def history do :history end
+#  def function do :function end
+#  def cache do :cache end
+#end
+#
+#defmodule TT.ControlOptions do
+#  def hold do :hold end
+#  def veer do :veer end
+#  def derail do :derail end
+#end
+#
+#defmodule TT.TrackOptions do
+#  def ok do :ok end
+#  def error do :error end
+#  def both do :both end
+#end
+#
+#defmodule TT.InputOptions do
+#  def apply do :apply end
+#  def railway do :railway end
+#  def off_track do :off_track end
+#end
 
 defmodule TT.Options do
+
+  @moduledoc false
+
   defstruct name: nil, input: :railway, try: false, bang: false, track: :ok, control: :derail, return: :function
 
   @type return_options :: :noop | :history | :function | :cache
-  @type control_options :: :hold | :steer | :derail
+  @type control_options :: :hold | :veer | :derail
   @type track_options :: :ok | :error | :both
   @type input_options :: :railway | :apply | :off_track
 
@@ -132,7 +137,7 @@ defmodule TT.Options do
   #                :function - default, runs function and returns value
   #          :control    - controls the track we are on
   #               :hold    - tag does not change based on result
-  #               :steer   - tag becomes the latest result (even to recover)
+  #               :veer   - tag becomes the latest result (even to recover)
   #               :derail  - tag can become error (default)
   #          :input      - what gets passed in to function?
   #               :railway - current value on the track
@@ -144,6 +149,8 @@ defmodule TT.Options do
 end
 
 defmodule TT.Track do
+  @moduledoc false
+
   defstruct result: %TT.Result{}, history: []
   @type t :: %TT.Track{
                result:  TT.Result.t(),
@@ -153,12 +160,206 @@ end
 
 
 defmodule TT do
-  @moduledoc false
 
   require Logger
   alias TT.{Track, Result, Options}
 
   @type tag_result :: {:ok | :error, any()}
+  @type name :: atom() | nil
+  @type tickets :: [atom()]
+
+  @doc """
+  Calls the function `fn/1 :: {:ok | :error, any()}` with the current `:ok` track value.
+
+  ## Examples
+      iex> {:ok, 10} |> TT.run(fn x -> {:ok, x * 2} end) |> TT.eol()
+      {:ok, 20}
+      iex> {:error, 7} |> TT.run(fn x -> {:ok, x * 3} end) |> TT.eol()
+      {:error, 7}
+  """
+
+  @spec run(any(), function(), name()) :: Track.t()
+  def run(track, function, name \\ nil) do
+    resolve_track(track, function, [name: name])
+  end
+
+  @doc """
+  Calls the function `fn/1 :: any()` with the current `:ok` track value.
+
+  ## Examples
+      iex> {:ok, 4} |> TT.run!(fn x -> x * 3 end) |> TT.eol()
+      {:ok, 12}
+      iex> {:error, 1} |> TT.run!(fn x -> x * 5 end) |> TT.eol()
+      {:error, 1}
+  """
+
+  @spec run!(any(), function(), name()) :: Track.t()
+  def run!(track, function, name \\ nil) do
+    resolve_track(track, function, [name: name, bang: true])
+  end
+
+  @spec veer(any(), function(), name()) :: Track.t()
+  def veer(track, function, name \\ nil) do
+    resolve_track(track, function, [name: name, track: :both, control: :veer])
+  end
+
+  @spec veer!(any(), function(), name()) :: Track.t()
+  def veer!(track, function, name \\ nil) do
+    resolve_track(track, function, [name: name, bang: true, track: :both, control: :veer])
+  end
+
+  @spec veer_history(any(), function(), name()) :: Track.t()
+  def veer_history(track, function, name \\ nil) do
+    resolve_track(track, function, [name: name, bang: true, track: :both, control: :veer, return: :history])
+  end
+
+  @spec check(any(), function(), name()) :: Track.t()
+  def check(track, function, name \\ nil) do
+    resolve_track(track, function, [name: name, track: :both])
+  end
+
+  @spec check!(any(), function(), name()) :: Track.t()
+  def check!(track, function, name \\ nil) do
+    resolve_track(track, function, [name: name, track: :both, bang: true])
+  end
+
+  @doc """
+  Calls the function `fn/1 :: any()` as a side-effect with the current `:ok` track value.
+
+  The return value is ignored and the track will remain unchanged.
+
+  ## Examples
+      iex> {:ok, "low"} |> TT.signal(fn x -> IO.puts("danger " <> x) end) |> TT.eol()
+      {:ok, "low"}
+      iex> {:error, "high"} |> TT.signal(fn x -> IO.puts("danger " <> x) end) |> TT.eol()
+      {:error, "high"}
+
+  Note that "danger low" would appear in the actual output for the 1st example.
+  """
+
+  @spec signal(any(), function()) :: Track.t()
+  def signal(track, function) do
+    resolve_track(track, function, [return: :noop, bang: true])
+  end
+
+  @doc """
+  Calls the function `fn/1 :: any()` as a side-effect with the track history if on the `:ok` track.
+
+  The return value is ignored and the track will remain unchanged.
+  """
+
+  @spec signal_history(any(), function()) :: Track.t()
+  def signal_history(track, function) do
+    resolve_track(track, function, [return: :noop, bang: true, return: :history])
+  end
+
+  @spec peek(any(), function()) :: Track.t()
+  def peek(track, function) do
+    resolve_track(track, function, [return: :noop, bang: true, track: :both])
+  end
+
+  @doc """
+  Calls the function `fn/1 :: any()` as a side-effect with the track history from either track.
+
+  The return value is ignored and the track will remain unchanged.
+  """
+
+  @spec peek_history(any(), function()) :: Track.t()
+  def peek_history(track, function) do
+    resolve_track(track, function, [return: :noop, bang: true, track: :both, return: :history])
+  end
+
+  @doc """
+  Calls the function `fn/1 :: any()` as a side-effect with the current `:error` track value.
+
+  The return value is ignored and the track will remain unchanged.
+
+  ## Examples
+      iex> {:ok, "low"} |> TT.report_error(fn x -> IO.puts("danger " <> x) end) |> TT.eol()
+      {:ok, "low"}
+      iex> {:error, "high"} |> TT.report_error(fn x -> IO.puts("danger " <> x) end) |> TT.eol()
+      {:error, "high"}
+
+  Note that "danger high" would appear in the actual output for the 2nd example.
+  """
+
+  @spec report_error(any(), function()) :: Track.t()
+  def report_error(track, function) do
+    resolve_track(track, function, [return: :noop, bang: true, track: :error])
+  end
+
+  @doc """
+  Calls the function `fn/1 :: any()` as a side-effect with the track history if on the `:error` track.
+
+  The return value is ignored and the track will remain unchanged.
+  """
+
+  @spec report_history(any(), function()) :: Track.t()
+  def report_history(track, function) do
+    resolve_track(track, function, [return: :noop, bang: true, track: :error, return: :history])
+  end
+
+  @spec try(any(), function(), name()) :: Track.t()
+  def try(track, function, name \\ nil) do
+    resolve_track(track, function, [name: name, try: true])
+  end
+
+  @spec try!(any(), function(), name()) :: Track.t()
+  def try!(track, function, name \\ nil) do
+    resolve_track(track, function, [name: name, bang: true, try: true])
+  end
+
+  @spec run_tickets(any(), function(), tickets(), name()) :: Track.t()
+  def run_tickets(track, function, tickets, name \\ nil) do
+    cache_tickets(track, tickets)
+    |> resolve_track(function, [name: name, input: :apply])
+  end
+
+  @spec run_tickets!(any(), function(), tickets(), name()) :: Track.t()
+  def run_tickets!(track, function, tickets, name \\ nil) do
+    cache_tickets(track, tickets)
+    |> resolve_track(function, [name: name, input: :apply, bang: true])
+  end
+
+  @spec try_tickets(any(), function(), tickets(), name()) :: Track.t()
+  def try_tickets(track, function, tickets, name \\ nil) do
+    cache_tickets(track, tickets)
+    |> resolve_track(function, [name: name, try: true, input: :apply])
+  end
+
+  @spec try_tickets!(any(), function(), tickets(), name()) :: Track.t()
+  def try_tickets!(track, function, tickets, name \\ nil) do
+    cache_tickets(track, tickets)
+    |> resolve_track(function, [name: name, bang: true, try: true, input: :apply])
+  end
+
+  @spec cache(any(), atom(), any()) :: Track.t()
+  def cache(track, name, value) do
+    resolve_track(track, value, [name: name, return: :cache])
+  end
+
+  @spec cache_many(any(), keyword()) :: Track.t()
+  def cache_many(track, [{k, v} | values]) do
+    resolve_track(track, v, [name: k, return: :cache])
+    |> cache_many(values)
+  end
+
+  @spec cache_many(any(), []) :: Track.t()
+  def cache_many(track, []) do
+    track
+  end
+
+  @spec cache_tickets(any(), tickets(), name()) :: Track.t()
+  def cache_tickets(track, tickets, name \\ nil) do
+    cache(track, name, extract_ok_values(track, tickets))
+  end
+
+  @spec eol(Track.t()) :: tag_result()
+  def eol(%Track{} = track) do
+    {track.result.tag, track.result.value}
+  end
+
+  # internal
 
   defp extract_ok_values(track, arg_names) do
     extract_results(track, arg_names)
@@ -189,11 +390,11 @@ defmodule TT do
 
     new_result = case options.return do
       :history ->
-        history_result = %Result{ track.result | value: track.history}
+        history_result = %Result{ track.result | value: track.history, name: nil}
         resolve_function(history_result, function, options)
       :function -> resolve_function(track.result, function, options)
       :noop -> resolve_function(track.result, function, options)
-               %Result{track.result | skip: true}
+               %Result{track.result | skip: true, name: nil}
       :cache -> resolve_direct_value(track.result, function, options)
     end
 
@@ -221,9 +422,9 @@ defmodule TT do
 
   defp resolve_function(%Result{} = result, function, %Options{name: name, try: true} = options) do
     try do
-        resolve_function_with_input(result, function, options)
-      rescue
-        e -> %Result{tag: :error, name: name, value: e}
+      resolve_function_with_input(result, function, options)
+    rescue
+      e -> %Result{tag: :error, name: name, value: e}
     end
   end
 
@@ -243,8 +444,8 @@ defmodule TT do
 
   defp resolve_function_with_input(%Result{value: value} = result, function, %Options{input: :railway} = options) do
 
-      function_return = function.(value)
-      resolve_function_return(result, function_return, options)
+    function_return = function.(value)
+    resolve_function_return(result, function_return, options)
 
   end
 
@@ -256,7 +457,7 @@ defmodule TT do
   end
 
   defp resolve_direct_value(%Result{tag: tag}, direct_value, %Options{name: name} = options) do
-     %Result{tag: tag, name: name, value: direct_value}
+    %Result{tag: tag, name: name, value: direct_value}
   end
 
   defp resolve_function_return(%Result{tag: tag}, function_return, %Options{name: name} = options) do
@@ -280,7 +481,7 @@ defmodule TT do
           :ok -> old_tag
         end
       :hold -> old_tag
-      :steer -> new_tag
+      :veer -> new_tag
     end
   end
 
@@ -305,93 +506,5 @@ defmodule TT do
     %Track{result: %Result{tag: :ok, value: value}}
   end
 
-  def run(track, function, name \\ nil) do
-    resolve_track(track, function, [name: name])
-  end
-
-  def run!(track, function, name \\ nil) do
-    resolve_track(track, function, [name: name, bang: true])
-  end
-
-  def check(track, function, name \\ nil) do
-    resolve_track(track, function, [name: name, track: :both])
-  end
-
-  def check!(track, function, name \\ nil) do
-    resolve_track(track, function, [name: name, track: :both, bang: true])
-  end
-
-  def signal(track, function) do
-    resolve_track(track, function, [return: :noop, bang: true])
-  end
-
-  def signal_history(track, function) do
-    resolve_track(track, function, [return: :noop, bang: true, return: :history])
-  end
-
-  def peek(track, function) do
-    resolve_track(track, function, [return: :noop, bang: true, track: :both])
-  end
-
-  def peek_history(track, function) do
-    resolve_track(track, function, [return: :noop, bang: true, track: :both, return: :history])
-  end
-
-  def growl(track, function) do
-    resolve_track(track, function, [return: :noop, bang: true, track: :error])
-  end
-
-  def growl_history(track, function) do
-    resolve_track(track, function, [return: :noop, bang: true, track: :error, return: :history])
-  end
-
-  def try(track, function, name \\ nil) do
-    resolve_track(track, function, [name: name, try: true])
-  end
-
-  def try!(track, function, name \\ nil) do
-    resolve_track(track, function, [name: name, bang: true, try: true])
-  end
-
-  def run_with(track, function, args, name \\ nil) do
-    cache_with(track, args)
-    |> resolve_track(function, [name: name, input: :apply])
-  end
-
-  def run_with!(track, function, args, name \\ nil) do
-    cache_with(track, args)
-    |> resolve_track(function, [name: name, input: :apply, bang: true])
-  end
-
-  def try_with(track, function, args, name \\ nil) do
-    cache_with(track, args)
-    |> resolve_track(function, [name: name, try: true, input: :apply])
-  end
-
-  def try_with!(track, function, args, name \\ nil) do
-    cache_with(track, args)
-    |> resolve_track(function, [name: name, bang: true, try: true, input: :apply])
-  end
-
-  def cache(track, name, value) do
-    resolve_track(track, value, [name: name, return: :cache])
-  end
-
-  def cache_many(track, [{k, v} | values]) do
-    resolve_track(track, v, [name: k, return: :cache])
-    |> cache_many(values)
-  end
-
-  def cache_many(track, []) do
-    track
-  end
-
-  defp cache_with(track, args) do
-    cache(track, nil, extract_ok_values(track, args))
-  end
-
-  def eol(%Track{} = track) do
-    {track.result.tag, track.result.value}
-  end
 
 end
