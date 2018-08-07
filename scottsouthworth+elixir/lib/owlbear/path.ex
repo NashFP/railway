@@ -3,8 +3,9 @@ defmodule OwlBear.Path do
   @moduledoc false
 
   defstruct result: %Result{}, history: []
+
   @type t :: %Path{
-               result:  Result.t(),
-               history: [Result.t()],
-             }
+          result: Result.t(),
+          history: [Result.t()]
+        }
 end

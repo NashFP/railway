@@ -3,15 +3,14 @@ defmodule OwlBear.Result do
 
   @moduledoc false
 
-
   defstruct tag: :ok, name: nil, value: nil, skip: false
   @type tag :: :ok | :error
   @type t :: %OwlBear.Result{
-               tag: tag(),
-               name: atom() | nil,
-               value: any(),
-               skip: boolean
-             }
+          tag: tag(),
+          name: atom() | nil,
+          value: any(),
+          skip: boolean
+        }
 
   def result_to_ok_value(%Result{} = result) do
     {:ok, value} = {result.tag, result.value}
@@ -40,17 +39,16 @@ defmodule OwlBear.Result do
   end
 
   def unload(value) do
-
     case value do
-
-      %Result{tag: :ok, value: v, skip: false} -> v
+      %Result{tag: :ok, value: v, skip: false} ->
+        v
 
       _ when is_list(value) ->
-
-        list_entries = case Keyword.keyword?(value) do
-          true -> Keyword.values(value)
-          false -> value
-        end
+        list_entries =
+          case Keyword.keyword?(value) do
+            true -> Keyword.values(value)
+            false -> value
+          end
 
         list_entries
         |> Enum.filter(fn
@@ -60,7 +58,6 @@ defmodule OwlBear.Result do
         |> Enum.map(fn {:ok, v} -> v end)
 
       _ when is_map(value) ->
-
         value
         |> Enum.to_list()
         |> Enum.filter(fn
@@ -69,12 +66,11 @@ defmodule OwlBear.Result do
         end)
         |> Enum.map(fn {:ok, v} -> v end)
 
-      {:ok, v} -> v
+      {:ok, v} ->
+        v
 
       _ ->
         value
-
     end
   end
-
 end

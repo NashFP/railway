@@ -1,23 +1,28 @@
 defmodule OwlBear.Options do
-
   @moduledoc false
 
-  defstruct name: nil, input: :path, try: false, bang: false, path: :ok, control: :attempt, return: :function
+  defstruct name: nil,
+            input: :path,
+            try: false,
+            bang: false,
+            path: :ok,
+            control: :attempt,
+            return: :function
 
-  @type return_options :: :noop | :history | :function | :memorize | :remember
+  @type return_options :: :noop | :history | :function | :memorize
   @type control_options :: :hold | :recover | :attempt
   @type path_options :: :ok | :error | :both
   @type input_options :: :path | :memories | :off_path
 
   @type t :: %OwlBear.Options{
-               name: atom | nil,
-               try: boolean,
-               bang: boolean,
-               input: input_options(),
-               return: return_options(),
-               path: path_options(),
-               control: control_options()
-             }
+          name: atom | nil,
+          try: boolean,
+          bang: boolean,
+          input: input_options(),
+          return: return_options(),
+          path: path_options(),
+          control: control_options()
+        }
 
   # options:
   #          :try    - rescue to :error tuple
@@ -38,6 +43,4 @@ defmodule OwlBear.Options do
   #               :memories   - current value used as kernel.apply (must be array)
   #               :off_path - function called as arity 0 (ignores current path value)
   #
-
 end
-
