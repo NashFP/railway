@@ -4,20 +4,22 @@ defmodule OwlBear.Options do
   defstruct name: nil,
             input: :path,
             try: false,
-            bang: false,
-            path: :ok,
+            bare: false,
+            noop: false,
+            path: :both,
             control: :attempt,
             return: :function
 
-  @type return_options :: :noop | :history | :function | :memorize
+  @type return_options :: :history | :function | :memorize
   @type control_options :: :hold | :recover | :attempt
   @type path_options :: :ok | :error | :both
-  @type input_options :: :path | :memories | :off_path
+  @type input_options :: :path | :memories | :off_path | :history
 
   @type t :: %OwlBear.Options{
           name: atom | nil,
           try: boolean,
-          bang: boolean,
+          bare: boolean,
+          noop: boolean,
           input: input_options(),
           return: return_options(),
           path: path_options(),
@@ -26,7 +28,7 @@ defmodule OwlBear.Options do
 
   # options:
   #          :try    - rescue to :error tuple
-  #          :bang   - need to wrap function return in :ok tuple
+  #          :bare   - need to wrap function return in :ok tuple
   #          :path   - function flys on :ok, :error or :both paths
   #          :return  - how is the value stored and returned
   #                :noop  - nothing stored, path value unchanged
