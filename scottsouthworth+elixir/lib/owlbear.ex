@@ -164,7 +164,8 @@ defmodule OwlBear do
 
   @spec run_history(any(), function(), keyword()) :: Path.t()
   def run_history(path, function, options \\ []) do
-    path |> resolve_path(function, [path: :ok, return: :history] ++ options)
+    recall_history(path)
+    |> resolve_path(function, [path: :ok] ++ options)
   end
 
 
@@ -318,11 +319,11 @@ defmodule OwlBear do
   ## Examples
       iex> import OwlBear
       ...> {:ok, "low"}
-      ...> |> OwlBear.growl(fn x -> IO.puts("danger " <> x) end)
+      ...> |> growl(fn x -> IO.puts("danger " <> x) end)
       ...> |> rest()
       {:ok, "low"}
       ...> {:error, "high"}
-      ...> |> OwlBear.growl(fn x -> IO.puts("danger " <> x) end, path: :error)
+      ...> |> growl(fn x -> IO.puts("danger " <> x) end, path: :error)
       ...> |> rest()
       {:error, "high"}
 
@@ -332,14 +333,16 @@ defmodule OwlBear do
 
   @spec growl(Path.t(), function(), keyword()) :: Path.t()
   def growl(path, function, options \\ []) do
-    resolve_path(path, function, [return: :noop, bare: true] ++ options)
+    resolve_path(path, function, [bare: true] ++ options)
+    to_path(path)
   end
 
 
   @spec growl_using(any(), function(), memories(), keyword()) :: Path.t()
   def growl_using(path, function, notes, options \\ []) do
     recall_memories(path, notes)
-    |> resolve_path(function, [return: :noop, bare: true, input: :memories] ++ options)
+    |> resolve_path(function, [bare: true, input: :memories] ++ options)
+    to_path(path)
   end
 
 
@@ -352,12 +355,12 @@ defmodule OwlBear do
   Supports options: `name: atom()`, `try: true`, and `path: :ok | :error`.
   """
 
-  @spec growl_history(Path.t(), function()) :: Path.t()
-  def growl_history(path, function) do
-    resolve_path(path, function, return: :noop, bare: true, input: :history)
+  @spec growl_history(Path.t(), function(), keyword()) :: Path.t()
+  def growl_history(path, function, options \\ []) do
+    recall_history(path)
+    |> resolve_path(function, [bare: true] ++ options)
+    to_path(path)
   end
-
-
 
   @spec note(keyword()) :: Path.t()
   def note(key_values) do
@@ -388,13 +391,13 @@ defmodule OwlBear do
 
   # internal
 
-  @spec recall_history(any()) :: Path.t()
+  @spec recall_history(Path.t()) :: Path.t()
   defp recall_history(path) do
     note(path, [{nil, path.history}])
   end
 
 
-  @spec recall_memories(any(), memories()) :: Path.t()
+  @spec recall_memories(Path.t(), memories()) :: Path.t()
   defp recall_memories(path, memories) do
     note(path, [{nil, extract_raw_values(path, memories)}])
   end
@@ -503,11 +506,6 @@ defmodule OwlBear do
       false ->
         %Result{tag: :error, name: name, value: :cannot_apply_non_list_value}
     end
-  end
-
-  defp resolve_function_input(%Result{} = result, function, %Options{input: :history} = options) do
-    function_return = function.()
-    resolve_function_return(result, function, function_return, options)
   end
 
   defp resolve_function_input(

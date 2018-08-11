@@ -5,7 +5,7 @@ defmodule OwlBear.Options do
             input: :path,
             try: false,
             bare: false,
-            noop: false,
+            apply: false,
             path: :both,
             control: :attempt,
             return: :function
@@ -19,7 +19,7 @@ defmodule OwlBear.Options do
           name: atom | nil,
           try: boolean,
           bare: boolean,
-          noop: boolean,
+          apply: boolean,
           input: input_options(),
           return: return_options(),
           path: path_options(),
