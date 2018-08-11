@@ -1,7 +1,12 @@
 defmodule OwlBear.Result do
   alias OwlBear.Result
 
-  @moduledoc false
+  @moduledoc """
+
+  # Result Yum
+
+
+  """
 
   defstruct tag: :ok, name: nil, value: nil, skip: false
   @type tag :: :ok | :error
