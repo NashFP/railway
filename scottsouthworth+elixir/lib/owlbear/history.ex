@@ -18,4 +18,5 @@ defmodule OwlBear.History do
     |> Enum.uniq_by(fn r -> r.name end)
     |> Enum.map(fn r -> {r.name, r.value} end)
   end
+
 end

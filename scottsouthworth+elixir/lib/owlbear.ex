@@ -10,7 +10,7 @@ defmodule OwlBear do
 
   Functions are generally expected to return tuples such as `{:ok, value}` or `{error, value}`.
 
-  Functions that don't return a result tuple can be used with keyword option `raw: true`.
+  Functions that don't return a result tuple can be used with keyword option `wrap: true`.
   This will wrap return values in a result tuple of form `{:ok, value}`.
 
   Functions that generate exceptions can be trapped as error tuples using the option `try: true`.
@@ -22,7 +22,7 @@ defmodule OwlBear do
       iex> import OwlBear
       iex> "Hello"
       ...> |> run(fn msg -> {:ok, msg <> " OwlBear"} end)
-      ...> |> run(fn msg -> msg <> ", let's be friends!" end, raw: true)
+      ...> |> run(fn msg -> msg <> ", let's be friends!" end, wrap: true)
       ...> |> eol()
       {:ok, "Hello OwlBear, let's be friends!"}
 
@@ -52,13 +52,13 @@ defmodule OwlBear do
       iex> import OwlBear
       iex> "Hello"
       ...> |> run(fn msg -> {:ok, msg <> " OwlBear"} end)
-      ...> |> check(fn _ -> {:ok, "A delicious adventuer!"} end)
-      ...> |> check(fn _ -> {:error, "This guy has a sword!"} end)
-      ...> |> check(fn _ -> "Not dead yet?" end, raw: true)
-      ...> |> check(fn _ -> {:error, "Run away! Run away!"} end)
-      ...> |> check(fn _ -> {:ok, "Are we safe now?"} end)
+      ...> |> check(fn _ -> {:ok, "A delicious adventuer!"} end, name: :nearby)
+      ...> |> check(fn _ -> {:error, "This guy has a sword!"} end, name: :armed)
+      ...> |> check(fn _ -> "Not dead yet?" end, wrap: true, name: :dead)
+      ...> |> check(fn _ -> {:error, "Run away! Run away!"} end, name: :must_flee)
+      ...> |> check(fn _ -> {:ok, "Are we safe now?"} end, name: :safe)
       ...> |> eol()
-      {:error, "Are we safe now?"}
+      {:error, "Hello OwlBear"}
 
   When OwlBear checks something, he will always pass along the value, but cannot
   recover from the error path.
@@ -88,19 +88,18 @@ defmodule OwlBear do
   alias OwlBear.{Path, Result, Options}
 
   @type tag_result :: {:ok | :error, any()}
-  @type memories :: [atom()]
 
   @doc """
   Operates only on the `:ok` path.
   Calls the function `fn/1 :: {:ok | :error, any()}` with the current path value.
   If an `:error` tuple is returned, the path will shift to the `:error` state.
 
-  Supports options: `name: atom()`, `raw: true` and `try: true`.
+  Supports options: `name: atom()`, `wrap: true` and `try: true`.
 
   ## Examples
       iex> import OwlBear
       ...> {:ok, 10}
-      ...> |> run(fn x -> x * 2 end, raw: true)
+      ...> |> run(fn x -> x * 2 end, wrap: true)
       ...> |> eol()
       {:ok, 20}
       iex> {:ok, 10}
@@ -112,11 +111,11 @@ defmodule OwlBear do
       ...> |> eol()
       {:error, 7}
       iex> "OwlBear can"
-      ...> |> run(fn x -> x <> " concatenate!" end, raw: true, name: :concat)
+      ...> |> run(fn x -> x <> " concatenate!" end, wrap: true, name: :concat)
       ...> |> eol()
       {:ok, "OwlBear can concatenate!"}
       iex> {:ok, "OwlBear cannot"}
-      ...> |> run(fn x -> x + 5 end, try: true, raw: true)
+      ...> |> run(fn x -> x + 5 end, try: true, wrap: true)
       ...> |> eol()
       {:error, %ArithmeticError{message: "bad argument in arithmetic expression"}}
   """
@@ -132,25 +131,35 @@ defmodule OwlBear do
   `notes` array.
   If an `:error` tuple is returned, the path will shift to the `:error` state.
 
-  Supports options: `name: atom()`, `raw: true` and `try: true`.
+  Supports options: `name: atom()`, `wrap: true` and `try: true`.
 
   ## Examples
       iex> import OwlBear
       ...> note(bunnies: 3, swords: 2, hats: 7)
-      ...> |> run_using(fn x, y, z -> {:ok, x + y * z} end, [:bunnies, :swords, :hats])
+      ...> |> run_ok_map(fn m ->  m.bunnies + m.swords * m.hats end, wrap: true)
       ...> |> eol()
       {:ok, 17}
-      ...> note(bunnies: 4)
-      ...> |> run(fn x -> x * 3 end, name: :more_bunnies, raw: true)
-      ...> |> run_using(fn x, y -> {:ok, x + y} end, [:bunnies, :more_bunnies])
+      ...> {:ok, 5}
+      ...> |> note(bunnies: 4)
+      ...> |> run(fn x -> x * 3 end, name: :more_bunnies, wrap: true)
+      ...> |> run_ok_map(fn m -> {:ok, m.bunnies + m.more_bunnies} end)
       ...> |> eol()
-      {:ok, 16}
+      {:ok, 19}
   """
 
-  @spec run_using(any(), function(), memories(), keyword()) :: Path.t()
-  def run_using(path, function, notes, options \\ []) do
-    recall_memories(path, notes)
-    |> resolve_path(function, [path: :ok, apply: true] ++ options)
+  @spec run_ok_map(any(), function(), keyword()) :: Path.t()
+  def run_ok_map(path, function, options \\ []) do
+    resolve_path(path, function, [path: :ok, map: :ok] ++ options)
+  end
+
+  @spec run_error_map(any(), function(), keyword()) :: Path.t()
+  def run_error_map(path, function, options \\ []) do
+    resolve_path(path, function, [path: :ok, map: :error] ++ options)
+  end
+
+  @spec run_result_map(any(), function(), keyword()) :: Path.t()
+  def run_result_map(path, function, options \\ []) do
+    resolve_path(path, function, [path: :ok, map: :result] ++ options)
   end
 
   @doc """
@@ -158,15 +167,9 @@ defmodule OwlBear do
   Calls the function `fn(h :: OwlBear.History.t()) :: {:ok | :error, any()}`.
   If an `:error` tuple is returned, the path will shift to the `:error` state.
 
-  Supports options: `name: atom()`, `raw: true` and `try: true`.
+  Supports options: `name: atom()`, `wrap: true` and `try: true`.
 
   """
-
-  @spec run_history(any(), function(), keyword()) :: Path.t()
-  def run_history(path, function, options \\ []) do
-    recall_history(path)
-    |> resolve_path(function, [path: :ok] ++ options)
-  end
 
 
 
@@ -175,7 +178,7 @@ defmodule OwlBear do
   Calls the function `fn/1 :: {:ok | :error, any()}` with the current path value.
   If an `:ok` tuple is returned, the path will shift to the `:ok` state.
 
-  Supports options: `name: atom()`, `raw: true` and `try: true`.
+  Supports options: `name: atom()`, `wrap: true` and `try: true`.
 
   ## Examples
       iex> import OwlBear
@@ -195,7 +198,7 @@ defmodule OwlBear do
 
   @spec fix(any(), function(), keyword()) :: Path.t()
   def fix(path, function, options \\ []) do
-    resolve_path(path, function, [path: :error, control: :recover] ++ options)
+    resolve_path(path, function, [path: :error, tag: :can_become_ok] ++ options)
   end
 
   @doc """
@@ -204,42 +207,39 @@ defmodule OwlBear do
   `notes` array.
   If an `:ok` tuple is returned, the path will shift to the `:ok` state.
 
-  Supports options: `name: atom()`, `raw: true` and `try: true`.
+  Supports options: `name: atom()`, `wrap: true` and `try: true`.
 
   ## Examples
       iex> import OwlBear
       ...> {:error, "OwlBear needs a fix."}
       ...> |> note(bunnies: 3, swords: 2, hats: 7)
-      ...> |> fix_using(fn x, y, z -> {:ok, x + y * z} end, [:bunnies, :swords, :hats])
+      ...> |> fix_ok_map(fn m -> {:ok, m.swords} end)
       ...> |> eol()
-      {:ok, 17}
-      ...> note(bunnies: 4)
-      ...> |> run(fn x -> x * 3 end, name: :more_bunnies, raw: true)
-      ...> |> run_using(fn x, y -> {:ok, x + y} end, [:bunnies, :more_bunnies])
-      ...> |> eol()
-      {:ok, 16}
-  """
-
-  @spec fix_using(any(), function(), memories(), keyword()) :: Path.t()
-  def fix_using(path, function, notes, options \\ []) do
-    recall_memories(path, notes)
-    |> resolve_path(function, [apply: true, path: :error, control: :recover] ++ options)
-  end
-
-  @doc """
-  Operates only on the `:error` path.
-  Calls the function `fn(h :: OwlBear.History.t()) :: {:ok | :error, any()}`.
-  If an `:error` tuple is returned, the path will shift to the `:error` state.
-
-  Supports options: `name: atom()`, `raw: true` and `try: true`.
+      {:ok, 2}
 
   """
 
-  @spec fix_history(any(), function(), keyword()) :: Path.t()
-  def fix_history(path, function, options \\ []) do
-    recall_history(path)
-    |> resolve_path(function, [path: :error, control: :recover] ++ options)
+  #      ...> note(bunnies: 4)
+  #      ...> |> run(fn x -> x * 3 end, name: :more_bunnies, wrap: true)
+  #      ...> |> run_using(fn v -> {:ok, v.bunnies + v.more_bunnies} end, [:bunnies, :more_bunnies])
+  #      ...> |> eol()
+  #      {:ok, 16}
+
+  @spec fix_ok_map(any(), function(), keyword()) :: Path.t()
+  def fix_ok_map(path, function, options \\ []) do
+    resolve_path(path, function, [path: :error, map: :ok, tag: :can_become_ok] ++ options)
   end
+
+  @spec fix_error_map(any(), function(), keyword()) :: Path.t()
+  def fix_error_map(path, function, options \\ []) do
+    resolve_path(path, function, [path: :error, map: :error, tag: :can_become_ok] ++ options)
+  end
+
+  @spec fix_result_map(any(), function(), keyword()) :: Path.t()
+  def fix_result_map(path, function, options \\ []) do
+    resolve_path(path, function, [path: :error, map: :result, tag: :can_become_ok] ++ options)
+  end
+
 
 
 
@@ -250,119 +250,41 @@ defmodule OwlBear do
 
   ## Examples
       iex> import OwlBear
-      iex> {:error, 3}
+      iex> {:ok, 300}
       ...> |> check(fn x -> {:ok, x * 2} end)
       ...> |> eol()
-      {:error, 6}
+      {:ok, 300}
       iex> {:ok, 4}
-      ...> |> check(fn x -> {:ok, x * 5} end)
+      ...> |> check(fn x -> {:error, x * 5} end)
       ...> |> eol()
-      {:ok, 20}
+      {:error, 4}
       iex> {:error, 7}
       ...> |> check(fn x -> {:ok, x * 2} end)
       ...> |> check(fn x -> {:error, x + 3} end)
       ...> |> eol()
-      {:error, 17}
+      {:error, 7}
   """
 
   @spec check(any(), function(), keyword()) :: Path.t()
   def check(path, function, options \\ []) do
-    resolve_path(path, function, options)
+    resolve_path(path, function, [path: :both, tag: :can_become_error, value: :stays_the_same] ++ options)
   end
 
-  @doc """
-  Operates on both the `:ok` and `:error` paths.
-  Calls the function `fn/x :: {:ok | :error, any()}` by applying arguments created via the
-  `notes` array.
-  If an `:error` tuple is returned, the path will shift to the `:error` state.
-
-  ## Examples
-      iex> import OwlBear
-      ...> note(bunnies: 3, swords: 2, hats: 7)
-      ...> |> check_using(fn x, y, z -> {:ok, x + y * z} end, [:bunnies, :swords, :hats])
-      ...> |> eol()
-      {:ok, 17}
-      ...> note(bunnies: 4)
-      ...> |> check(fn x -> x * 3 end, name: :more_bunnies, raw: true)
-      ...> |> check_using(fn x, y -> {:ok, x + y} end, [:bunnies, :more_bunnies])
-      ...> |> eol()
-      {:ok, 16}
-  """
-
-  @spec check_using(any(), function(), memories(), keyword()) :: Path.t()
-  def check_using(path, function, notes, options \\ []) do
-    recall_memories(path, notes)
-    |> resolve_path(function, [apply: true] ++ options)
+  @spec check_ok_map(any(), function(), keyword()) :: Path.t()
+  def check_ok_map(path, function, options \\ []) do
+    resolve_path(path, function, [path: :both, map: :ok, tag: :can_become_error, value: :stays_the_same] ++ options)
   end
 
-  @doc """
-  Operates on both the `:ok` and `:error` paths.
-  Calls the function `fn(h :: OwlBear.History.t()) :: {:ok | :error, any()}`.
-  If an `:error` tuple is returned, the path will shift to the `:error` state.
-
-  Supports options: `name: atom()`, `raw: true` and `try: true`.
-
-  """
-
-  @spec check_history(any(), function(), keyword()) :: Path.t()
-  def check_history(path, function, options \\ []) do
-    recall_history(path)
-    |> resolve_path(function, options)
+  @spec check_error_map(any(), function(), keyword()) :: Path.t()
+  def check_error_map(path, function, options \\ []) do
+    resolve_path(path, function, [path: :both, map: :error, tag: :can_become_error, value: :stays_the_same] ++ options)
   end
 
-
-
-  @doc """
-  Calls the function `fn/1 :: any()` as a side-effect using the current path value.
-  Operates on both the `:error` and `:ok` paths unless specified with the `path: :ok | :error` option.
-
-  The return value is ignored and the path will remain unchanged.
-
-  ## Examples
-      iex> import OwlBear
-      ...> {:ok, "low"}
-      ...> |> signal(fn x -> IO.puts("danger " <> x) end)
-      ...> |> eol()
-      {:ok, "low"}
-      ...> {:error, "high"}
-      ...> |> signal(fn x -> IO.puts("danger " <> x) end, path: :error)
-      ...> |> eol()
-      {:error, "high"}
-
-  Supports options: `name: atom()`, `try: true`, and `path: :ok | :error`.
-
-  """
-
-  @spec signal(Path.t(), function(), keyword()) :: Path.t()
-  def signal(path, function, options \\ []) do
-    resolve_path(path, function, [raw: true] ++ options)
-    to_path(path)
+  @spec check_result_map(any(), function(), keyword()) :: Path.t()
+  def check_result_map(path, function, options \\ []) do
+    resolve_path(path, function, [path: :both, map: :result, tag: :can_become_error, value: :stays_the_same] ++ options)
   end
 
-
-  @spec signal_using(any(), function(), memories(), keyword()) :: Path.t()
-  def signal_using(path, function, notes, options \\ []) do
-    recall_memories(path, notes)
-    |> resolve_path(function, [raw: true, apply: true] ++ options)
-    to_path(path)
-  end
-
-
-  @doc """
-  Calls the function `fn(h :: OwlBear.History.t()) :: {:ok | :error, any()}` as a side-effect.
-  Operates on both the `:error` and `:ok` paths unless specified with the `path: :ok | :error` option.
-
-  The return value is ignored and the path will remain unchanged.
-
-  Supports options: `name: atom()`, `try: true`, and `path: :ok | :error`.
-  """
-
-  @spec signal_history(Path.t(), function(), keyword()) :: Path.t()
-  def signal_history(path, function, options \\ []) do
-    recall_history(path)
-    |> resolve_path(function, [raw: true] ++ options)
-    to_path(path)
-  end
 
   @spec note(keyword()) :: Path.t()
   def note(key_values) do
@@ -370,9 +292,15 @@ defmodule OwlBear do
   end
 
   @spec note(Path.t(), keyword()) :: Path.t()
-  def note(path, key_values) do
+  def note(%Path{} = path, key_values) do
     path |> do_memorize_many(key_values)
   end
+
+  @spec note(any(), keyword()) :: Path.t()
+  def note(value, key_values) do
+    to_path(value) |> do_memorize_many(key_values)
+  end
+
 
   @doc """
   Ends the pipeline and returns a result tuple of the form `{:ok | :error, any()}`.
@@ -380,7 +308,7 @@ defmodule OwlBear do
   ## Examples
       iex> import OwlBear
       ...> {:ok, 5}
-      ...> |> run(fn x -> x * 3 end, raw: true)
+      ...> |> run(fn x -> x * 3 end, wrap: true)
       ...> |> eol()
       {:ok, 15}
 
@@ -393,42 +321,17 @@ defmodule OwlBear do
 
   # internal
 
-  @spec recall_history(Path.t()) :: Path.t()
-  defp recall_history(path) do
-    note(path, [{nil, path.history}])
+  defp get_result_map(path, map_type) do
+    results = path.history
+              |> Enum.filter(fn r -> r.name != nil and r.skip == false and (map_type == :result or r.tag == map_type) end)
+
+    case map_type do
+      :result -> Enum.map(results, fn r -> {r.name, {r.tag, r.value}} end)
+      _ -> Enum.map(results, fn r -> {r.name, r.value} end)
+    end
+    |> Enum.reverse()
+    |> Map.new()
   end
-
-
-  @spec recall_memories(Path.t(), memories()) :: Path.t()
-  defp recall_memories(path, memories) do
-    note(path, [{nil, extract_raw_values(path, memories)}])
-  end
-
-#  defp extract_ok_values(path, memory_names) do
-#    extract_results(path, memory_names)
-#    |> Enum.map(&Result.result_to_ok_value/1)
-#  end
-
-  defp extract_raw_values(path, memory_names) do
-    extract_results(path, memory_names)
-    |> Enum.map(fn r -> r.value end)
-  end
-
-  defp extract_results(path, memory_names) do
-    Enum.map(
-      memory_names,
-      fn name ->
-        %Result{} =
-          Enum.find(path.history, {:error, :memory_not_found}, fn r ->
-            r.name == name and r.skip == false
-          end)
-      end
-    )
-  end
-
-#  defp resolve_path(function, options_or_keywords) do
-#    resolve_path(to_path({:ok, nil}), function, options_or_keywords)
-#  end
 
   defp resolve_path(path_or_value, function, options_or_keywords) do
     path = to_path(path_or_value)
@@ -437,30 +340,23 @@ defmodule OwlBear do
 
     case on_path do
       true -> resolve_on_path(path, function, options)
-      false -> resolve_off_path(path, function, options)
+      false -> path
     end
+
   end
 
   defp resolve_on_path(%Path{} = path, function, %Options{} = options) do
-    new_result =
-      case options.action do
-
-        :function ->
-          resolve_function(path.result, function, options)
-
-        :value ->
-          resolve_direct_value(path.result, function, options)
+    new_function =
+      case options.map do
+        :none -> function
+        _ -> outside_pipeline_function(function, get_result_map(path, options.map))
       end
 
+    new_result = resolve_function(path.result, new_function, options)
     new_history = [new_result | path.history]
     %Path{result: new_result, history: new_history}
   end
 
-  defp resolve_off_path(%Path{} = path, _function, %Options{} = options) do
-    skip_result = %Result{path.result | skip: true, name: options.name}
-    new_history = [skip_result | path.history]
-    %Path{result: path.result, history: new_history}
-  end
 
   defp is_on_path?(%Result{tag: tag}, %Options{path: path}) do
     case {tag, path} do
@@ -468,6 +364,13 @@ defmodule OwlBear do
       {:ok, :ok} -> true
       {_, :both} -> true
       _ -> false
+    end
+  end
+
+  defp on_known_path?(%Options{path: path}) do
+    case path do
+      :both -> false
+      _ -> true
     end
   end
 
@@ -484,63 +387,81 @@ defmodule OwlBear do
   end
 
   defp resolve_function_input(
-         %Result{value: value} = result,
-         function,
-         %Options{name: name, apply: true} = options
-       ) do
-    case is_list(value) do
-      true ->
-        function_return = apply(function, value)
-        resolve_function_return(result, function, function_return, options)
-
-      false ->
-        %Result{tag: :error, name: name, value: :cannot_apply_non_list_value}
-    end
-  end
-
-  defp resolve_function_input(
-         %Result{value: value} = result,
+         %Result{} = result,
          function,
          %Options{} = options
        ) do
-    function_return = function.(value)
-    resolve_function_return(result, function, function_return, options)
+
+    function_return = function.(result.value)
+    resolve_function_return(result, function_return, options)
   end
 
-  defp resolve_direct_value(%Result{tag: tag}, direct_value, %Options{name: name}) do
-    %Result{tag: tag, name: name, value: direct_value}
-  end
 
-  defp resolve_function_return(%Result{tag: tag}, function, function_return, %Options{name: name} = options) do
+  defp resolve_function_return(%Result{tag: tag} = result, value, %Options{} = options) do
     {new_tag, new_value} =
-      case options.raw do
-        true -> {:ok, function_return}
+      case options.wrap do
+        true -> {:ok, value}
         false ->
-          case function_return do
-            {:ok, _value} -> function_return
-            {:error, _value} -> function_return
-            _ -> raise("Return value for function #{inspect(function)} via name #{inspect(name)} must be of the form {:ok | :error, any()}.")
+          case value do
+            {:ok, _value} -> value
+            {:error, _value} -> value
+            _ -> raise("Return value for function via name #{inspect(options.name)} must be of the form {:ok | :error, any()}.")
           end
       end
 
-    final_tag = resolve_tag(tag, new_tag, options.control)
-    %Result{tag: final_tag, name: name, value: new_value}
+    final_value = resolve_value(result.value, new_value, options.value)
+    final_tag = resolve_tag(tag, new_tag, options.tag)
+    %Result{tag: final_tag, name: options.name, value: final_value}
   end
 
-  defp resolve_tag(old_tag, new_tag, control) do
-    case control do
-      :attempt ->
+  defp resolve_value(old_value, new_value, value_control) do
+    case value_control do
+      :stays_the_same -> old_value
+      :can_change -> new_value
+    end
+  end
+
+  defp resolve_tag(old_tag, new_tag, tag_control) do
+    case tag_control do
+      :can_become_error ->
         case new_tag do
           :error -> :error
           :ok -> old_tag
         end
 
-      :hold ->
+      :stays_the_same ->
         old_tag
 
-      :recover ->
-        new_tag
+      :can_become_ok ->
+        case new_tag do
+          :ok -> :ok
+          :error -> old_tag
+        end
     end
+  end
+
+
+  # to use stored values instead of the current pipeline value
+  defp outside_pipeline_function(function, argument) do
+    fn _pipeline_value -> function.(argument) end
+  end
+
+  # adds key-values to the path history with current pipeline result unchanged
+  defp do_memorize_many(%Path{} = path, key_values) do
+    new_path = add_key_value_list_elements(path, key_values)
+    new_history = [path.result | new_path.history]
+    %Path{result: path.result, history: new_history}
+  end
+
+  defp add_key_value_list_elements(%Path{} = path, [{k, v} | key_values]) do
+    new_result = %Result{name: k, value: v}
+    new_history = [new_result | path.history]
+    new_path = %Path{result: new_result, history: new_history}
+    add_key_value_list_elements(new_path, key_values)
+  end
+
+  defp add_key_value_list_elements(%Path{} = path, []) do
+    path
   end
 
   defp to_options(%Options{} = options) do
@@ -564,24 +485,6 @@ defmodule OwlBear do
     %Path{result: %Result{tag: :ok, value: value}}
   end
 
-#  defp add_to_path(%Path{} = path, tag, value) when tag == :ok or tag == :error do
-#    new_result = %Result{tag: tag, value: value}
-#    %Path{result: new_result, history: [new_result | path.history]}
-#  end
-#
-#  defp add_to_path(%Path{} = path, value) do
-#    new_result = %Result{tag: path.result.tag, value: value}
-#    %Path{result: new_result, history: [new_result | path.history]}
-#  end
-
-  def do_memorize_many(path, [{k, v} | values]) do
-    resolve_path(path, v, name: k, action: :value, path: :both)
-    |> do_memorize_many(values)
-  end
-
-  @doc false
-  def do_memorize_many(path, []) do
-    path
-  end
+  # run, check, fix, note, eol, signal vs alert
 
 end

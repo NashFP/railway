@@ -1,9 +1,9 @@
 defmodule OwlBearTest do
   use ExUnit.Case
   doctest OwlBear
+  doctest OwlBear.DOP
 
   require Logger
-  #  import OwlBear, only: [>>>: 2]
 
   def add_two_numbers(x, y) do
     x + y
@@ -24,24 +24,24 @@ defmodule OwlBearTest do
     end
   end
 
-  test "successful fly! with normal function" do
+  test "successful! with normal function" do
     import OwlBear
 
     result =
       {:ok, 5}
       #      |> OwlBear.cache(:cow, 6)
       #      |> OwlBear.cache(:dog, 0)
-      |> memorize_many(dog: 0, cow: 6)
+      |> note(dog: 0, cow: 6)
       #      |> OwlBear.try(fn _ -> crashy_uppercase("moo!") end)
-      |> run!(fn x -> add_two_numbers(x, 9) end)
-      |> hoot(fn x -> Logger.warn("signal be #{inspect(x)}") end)
-      |> run_using(&rop_divide/2, [:cow, :dog], :cat)
-      |> growl_history(fn h -> IO.puts(inspect(h)) end)
+      |> run(fn x -> add_two_numbers(x, 9) end, wrap: true)
+      |> check(fn x -> Logger.warn("signal be #{inspect(x)}") end, wrap: true)
+      |> run_ok_map(fn m -> rop_divide(m.cow, m.dog) end, name: :cat)
+#      |> signal_history(fn h -> IO.puts(inspect(h)) end)
       #      |> OwlBear.cache!(:moo, 11)
-      |> rest()
+      |> eol()
 
     #      >>> add_two_numbers(2,9), name: :moo, return: :value
-    assert {:ok, 3.0} == result
+    assert {:error, :division_by_zero} == result
   end
 
   #  test "successful fly with tagging function" do

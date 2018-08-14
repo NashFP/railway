@@ -7,7 +7,14 @@ defmodule TT.MixProject do
       version: "0.1.0",
       elixir: "~> 1.6",
       start_permanent: Mix.env() == :prod,
-      deps: deps()
+      deps: deps(),
+      # Docs
+      name: "OwlBear",
+      source_url: "https://github.com/darkmarmot/owlbear",
+      homepage_url: "http://YOUR_PROJECT_HOMEPAGE",
+      docs: [main: "OwlBear", # The main page in the docs
+#        logo: "path/to/logo.png",
+        extras: ["README.md"]]
     ]
   end
 
