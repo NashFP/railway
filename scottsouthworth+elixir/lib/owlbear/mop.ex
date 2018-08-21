@@ -20,11 +20,10 @@ defmodule OwlBear.DOP do
 
   """
 
-  defdelegate pack(key_values), to: OwlBear, as: :pack
-  defdelegate loot(path, function, options \\ []), to: OwlBear, as: :note
-  defdelegate alas(path, function, options \\ []), to: OwlBear, as: :alert
-  defdelegate camp(path), to: OwlBear, as: :eol
+  defdelegate rise(key_values), to: OwlBear, as: :pack
+  defdelegate hoot(path, function, options \\ []), to: OwlBear, as: :note
+  defdelegate growl(path, function, options \\ []), to: OwlBear, as: :alert
+  defdelegate slumber(path), to: OwlBear, as: :eol
   defdelegate run(path, function, options \\ []), to: OwlBear, as: :run
-  defdelegate fight(path, function, options \\ []), to: OwlBear, as: :fix
-
+  defdelegate attack(path, function, options \\ []), to: OwlBear, as: :fix
 end

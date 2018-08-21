@@ -12,9 +12,12 @@ defmodule TT.MixProject do
       name: "OwlBear",
       source_url: "https://github.com/darkmarmot/owlbear",
       homepage_url: "http://YOUR_PROJECT_HOMEPAGE",
-      docs: [main: "OwlBear", # The main page in the docs
-#        logo: "path/to/logo.png",
-        extras: ["README.md"]]
+      # The main page in the docs
+      docs: [
+        main: "OwlBear",
+        #        logo: "path/to/logo.png",
+        extras: ["README.md"]
+      ]
     ]
   end
 

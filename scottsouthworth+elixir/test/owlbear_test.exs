@@ -28,15 +28,15 @@ defmodule OwlBearTest do
     import OwlBear
 
     result =
-      {:ok, 5}
+      board(cow: 6, dog: 0, nil: 5)
       #      |> OwlBear.cache(:cow, 6)
       #      |> OwlBear.cache(:dog, 0)
-      |> note(dog: 0, cow: 6)
+      #      |> note(dog: 0, cow: 6)
       #      |> OwlBear.try(fn _ -> crashy_uppercase("moo!") end)
       |> run(fn x -> add_two_numbers(x, 9) end, wrap: true)
-      |> check(fn x -> Logger.warn("signal be #{inspect(x)}") end, wrap: true)
-      |> run_ok_map(fn m -> rop_divide(m.cow, m.dog) end, name: :cat)
-#      |> signal_history(fn h -> IO.puts(inspect(h)) end)
+      |> note(fn x -> Logger.warn("signal be #{inspect(x)}") end, wrap: true)
+      |> run(fn m -> rop_divide(m.cow, m.dog) end, name: :cat, map: :ok)
+      #      |> signal_history(fn h -> IO.puts(inspect(h)) end)
       #      |> OwlBear.cache!(:moo, 11)
       |> eol()
 

@@ -2,8 +2,10 @@ defmodule OwlBear.Options do
   @moduledoc false
 
   defstruct name: nil,
-            try: false, # use try_catch
-            wrap: false, # wrap return value as {:ok, any()}
+            # use try_catch
+            try: false,
+            # wrap return value as {:ok, any()}
+            wrap: false,
             tag: :can_become_error,
             value: :can_change,
             path: :both,
@@ -21,5 +23,4 @@ defmodule OwlBear.Options do
           tag: tag_options(),
           path: path_options()
         }
-
 end
